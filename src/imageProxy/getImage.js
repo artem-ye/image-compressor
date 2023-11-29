@@ -15,6 +15,9 @@ const get = (url) => {
 					reject(e);
 				}
 			});
+			res.on('error', (err) => {
+				reject(err);
+			});
 		});
 	});
 };
