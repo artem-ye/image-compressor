@@ -23,6 +23,20 @@ const appRoutes = {
 
 		return getImage(url, width);
 	},
+	'/img.avelicentia.com': async (params) => {
+		const [url, searchParams] = ('http:/' + params.url).split('?');
+		if (!URL.canParse(url)) {
+			throw new Error('Invalid path');
+		}
+
+		const width = new URLSearchParams(searchParams).get('w');
+
+		if (!width) {
+			throw new Error('w parameter missing');
+		}
+
+		return getImage(url, width);
+	},
 };
 
 const serve = async (url, method) => {
