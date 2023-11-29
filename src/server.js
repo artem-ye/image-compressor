@@ -1,6 +1,6 @@
 import http from 'http';
-import { getImage } from './getImage.js';
 import config from '../config.js';
+import { imageProxyController } from './imageProxy/controller.js';
 
 const PORT = config.PORT;
 
@@ -9,34 +9,8 @@ const staticRoutes = {
 };
 
 const appRoutes = {
-	'/img.nothingshop.com': async (params) => {
-		const [url, searchParams] = ('http:/' + params.url).split('?');
-		if (!URL.canParse(url)) {
-			throw new Error('Invalid path');
-		}
-
-		const width = new URLSearchParams(searchParams).get('w');
-
-		if (!width) {
-			throw new Error('w parameter missing');
-		}
-
-		return getImage(url, width);
-	},
-	'/img.avelicentia.com': async (params) => {
-		const [url, searchParams] = ('http:/' + params.url).split('?');
-		if (!URL.canParse(url)) {
-			throw new Error('Invalid path');
-		}
-
-		const width = new URLSearchParams(searchParams).get('w');
-
-		if (!width) {
-			throw new Error('w parameter missing');
-		}
-
-		return getImage(url, width);
-	},
+	'/img.nothingshop.com': imageProxyController,
+	'/img.avelicentia.com': imageProxyController,
 };
 
 const serve = async (url, method) => {
