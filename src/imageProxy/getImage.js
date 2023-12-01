@@ -1,28 +1,8 @@
 import sharp from 'sharp';
 import http from 'http';
 
-const get = (url) => {
-	return new Promise((resolve, reject) => {
-		http.get(url, (res) => {
-			let data = [];
-			res.on('data', (chunk) => {
-				data.push(chunk);
-			});
-			res.on('end', () => {
-				try {
-					resolve(Buffer.concat(data));
-				} catch (e) {
-					reject(e);
-				}
-			});
-			res.on('error', (err) => {
-				reject(err);
-			});
-		});
-	});
-};
-
 export const getImage = async (url, width) => {
-	const resp = await get(url);
-	return sharp(resp).resize(Number(width)).toBuffer();
+	const resize = sharp().resize(parseInt(width));
+	http.get(url, (res) => res.pipe(resize));
+	return resize.toBuffer();
 };
