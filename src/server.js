@@ -1,6 +1,6 @@
 import http from 'http';
 import config from '../config.js';
-import { imageProxyController } from './imageProxy/controller.js';
+import { imageProxyController } from './imageCompressor/controller.js';
 
 const PORT = config.PORT;
 
