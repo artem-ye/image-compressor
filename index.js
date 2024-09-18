@@ -22,6 +22,8 @@ const server = createServer((request, response) => {
     return response;
   };
 
+  // TODO: add response headers: content-type, content-lenght
+  // Hide error in response
   fetch(imgUrl)
     .then(({ status, statusText, ok, body }) => {
       setResponseStatus(status, statusText);
