@@ -16,28 +16,42 @@ const server = createServer((request, response) => {
   // TODO: set from search params
   const resizeOpts = { width: 50 };
 
-  const setResponseStatus = (code, message) => {
-    response.statusCode = code;
-    response.statusMessage = message;
-    return response;
-  };
+  response.on('error', (err) => {
+    console.log('Response stream error', err.message);
+  });
 
   // TODO: add response headers: content-type, content-lenght
   // Hide error in response
   fetch(imgUrl)
     .then(({ status, statusText, ok, body }) => {
-      setResponseStatus(status, statusText);
-      const transformer = ok ? sharp().resize(resizeOpts) : new PassThrough();
+      const readeble = Readable.fromWeb(body).on('error', (err) => {
+        console.log('Readable stream error', err.message);
+        response.end();
+      });
 
-      Readable.fromWeb(body)
-        .pipe(transformer)
-        .on('error', ({ message }) =>
-          setResponseStatus(HTTP_INTERNAL_SERVER_ERROR, message).end(message)
-        )
-        .pipe(response);
+      const transform = (
+        ok ? sharp().resize(resizeOpts) : new PassThrough()
+      ).on('error', (err) => {
+        console.log('Transform error', err.message);
+        response.end();
+      });
+
+      readeble.pipe(transform).pipe(response);
+
+      // setResponseStatus(status, statusText);
+      // const transformer = ok ? sharp().resize(resizeOpts) : new PassThrough();
+
+      // Readable.fromWeb(body)
+      //   .pipe(transformer)
+      //   .on('error', ({ message }) =>
+      //     setResponseStatus(HTTP_INTERNAL_SERVER_ERROR, message).end(message)
+      //   )
+      //   .pipe(response);
     })
-    .catch(({ message }) =>
-      setResponseStatus(HTTP_INTERNAL_SERVER_ERROR, message).end(message)
+    .catch(() =>
+      response
+        .writeHead(HTTP_INTERNAL_SERVER_ERROR, 'Upstream comunication error')
+        .end()
     );
 });
 
