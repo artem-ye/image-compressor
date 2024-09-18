@@ -1,15 +1,5 @@
-const PRODUCTION = {
-	PORT: 80,
+export const config = {
+  port: process.env.PORT || 8081,
+  host: process.env.HOST || '127.0.0.1',
+  proxyEndpoint: 'http://img.nothingshop.com/images',
 };
-
-const DEV = {
-	PORT: 8080,
-};
-
-const configs = {
-	production: PRODUCTION,
-	dev: DEV,
-};
-
-const env = process.env.NODE_ENV;
-export default configs[env];
