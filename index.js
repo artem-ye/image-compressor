@@ -1,9 +1,9 @@
-import { createServer } from 'node:http';
+import http from 'node:http';
 import { PassThrough, Readable } from 'node:stream';
 
 import sharp from 'sharp';
 import { config } from './lib/config.js';
-import { parseUrl, parseResizeOpts } from './lib/config.js';
+import { parseUrl, parseResizeOpts } from './lib/url.js';
 
 const { host: HOST, port: PORT, proxyEndpoint: PROXY_ENDPOINT } = config;
 const HTTP_INTERNAL_SERVER_ERR = 500;
@@ -16,7 +16,7 @@ const buildResponseHeaders = ({ headers: requestHeaders }) => {
   return newHeaders;
 };
 
-const server = createServer((request, response) => {
+const server = http.createServer((request, response) => {
   const { uri, params } = parseUrl(request.url);
   const imageUrl = proxyURL(uri);
   const resizeOpts = parseResizeOpts(params);
