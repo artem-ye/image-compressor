@@ -1,44 +1,55 @@
-import { config } from './config.js';
-
 import { createServer } from 'node:http';
 import { PassThrough, Readable } from 'node:stream';
-import { URL } from 'node:url';
+
 import sharp from 'sharp';
+import { config } from './lib/config.js';
+import { parseUrl, parseResizeOpts } from './lib/config.js';
 
 const { host: HOST, port: PORT, proxyEndpoint: PROXY_ENDPOINT } = config;
-const HTTP_INTERNAL_SERVER_ERROR = 500;
+const HTTP_INTERNAL_SERVER_ERR = 500;
 const proxyURL = (path) => `${PROXY_ENDPOINT}${path}`;
 
+const buildResponseHeaders = ({ headers: requestHeaders }) => {
+  const newHeaders = { 'transfer-encoding': 'chunked' };
+  const contentType = requestHeaders.get('content-type');
+  contentType && (newHeaders['content-type'] = contentType);
+  return newHeaders;
+};
+
 const server = createServer((request, response) => {
-  const { pathname } = new URL(`http://${HOST}${request.url}`);
-  const imgUrl = proxyURL(pathname);
+  const { uri, params } = parseUrl(request.url);
+  const imageUrl = proxyURL(uri);
+  const resizeOpts = parseResizeOpts(params);
 
-  // TODO: set from search params
-  const resizeOpts = { width: 50 };
+  response.on('error', (err) => {
+    console.log('Response stream error', err.message);
+  });
 
-  const setResponseStatus = (code, message) => {
-    response.statusCode = code;
-    response.statusMessage = message;
-    return response;
-  };
+  fetch(imageUrl)
+    .then(({ headers, ok, body, status, statusText }) => {
+      const responseHeaders = buildResponseHeaders({ headers });
+      response.writeHead(status, statusText, responseHeaders);
 
-  // TODO: add response headers: content-type, content-lenght
-  // Hide error in response
-  fetch(imgUrl)
-    .then(({ status, statusText, ok, body }) => {
-      setResponseStatus(status, statusText);
-      const transformer = ok ? sharp().resize(resizeOpts) : new PassThrough();
+      const readable = Readable.fromWeb(body).on('error', (e) => {
+        console.log('Readable error', e.message);
+        response.end('Upstream error');
+      });
 
-      Readable.fromWeb(body)
-        .pipe(transformer)
-        .on('error', ({ message }) =>
-          setResponseStatus(HTTP_INTERNAL_SERVER_ERROR, message).end(message)
-        )
-        .pipe(response);
+      const transform = (
+        ok ? sharp().resize(resizeOpts) : new PassThrough()
+      ).on('error', (e) => {
+        console.log('Transform error', e.message);
+        response.end('Transform error');
+      });
+
+      readable.pipe(transform).pipe(response);
     })
-    .catch(({ message }) =>
-      setResponseStatus(HTTP_INTERNAL_SERVER_ERROR, message).end(message)
-    );
+    .catch((err) => {
+      console.log(err);
+      const msg = 'Internal server error';
+      response.headersSent || response.writeHead(HTTP_INTERNAL_SERVER_ERR, msg);
+      response.end(msg);
+    });
 });
 
 server.listen(PORT, HOST, () => {
