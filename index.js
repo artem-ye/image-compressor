@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { PassThrough, Readable } from 'node:stream';
+import { PassThrough } from 'node:stream';
 
 import sharp from 'sharp';
 import { config } from './lib/config.js';
@@ -7,13 +7,14 @@ import { parseUrl, parseResizeOpts } from './lib/url.js';
 
 const { host: HOST, port: PORT, proxyEndpoint: PROXY_ENDPOINT } = config;
 const HTTP_INTERNAL_SERVER_ERR = 500;
+const HTTP_OK = 200;
 const proxyURL = (path) => `${PROXY_ENDPOINT}${path}`;
 
 const buildResponseHeaders = ({ headers: requestHeaders }) => {
-  const newHeaders = { 'transfer-encoding': 'chunked' };
-  const contentType = requestHeaders.get('content-type');
-  contentType && (newHeaders['content-type'] = contentType);
-  return newHeaders;
+  const headers = { 'transfer-encoding': 'chunked' };
+  const contentType = requestHeaders['content-type'];
+  contentType && (headers['content-type'] = contentType);
+  return headers;
 };
 
 const server = http.createServer((request, response) => {
@@ -22,19 +23,16 @@ const server = http.createServer((request, response) => {
   const resizeOpts = parseResizeOpts(params);
 
   response.on('error', (err) => {
-    console.log('Response stream error', err.message);
+    console.log('Response stream error', err);
   });
 
-  fetch(imageUrl)
-    .then(({ headers, ok, body, status, statusText }) => {
-      const responseHeaders = buildResponseHeaders({ headers });
-      response.writeHead(status, statusText, responseHeaders);
+  http
+    .get(imageUrl, (res) => {
+      const { statusCode, statusMessage } = res;
+      const headers = buildResponseHeaders(res);
+      response.writeHead(statusCode, statusMessage, headers);
 
-      const readable = Readable.fromWeb(body).on('error', (e) => {
-        console.log('Readable error', e.message);
-        response.end('Upstream error');
-      });
-
+      const ok = statusCode === HTTP_OK;
       const transform = (
         ok ? sharp().resize(resizeOpts) : new PassThrough()
       ).on('error', (e) => {
@@ -42,14 +40,14 @@ const server = http.createServer((request, response) => {
         response.end('Transform error');
       });
 
-      readable.pipe(transform).pipe(response);
+      res.pipe(transform).pipe(response);
     })
-    .catch((err) => {
+    .on('error', (err) => {
       console.log(err);
-      const msg = 'Internal server error';
-      response.headersSent || response.writeHead(HTTP_INTERNAL_SERVER_ERR, msg);
-      response.end(msg);
-    });
+      response.headersSent || response.writeHead(HTTP_INTERNAL_SERVER_ERR);
+      response.end('Upstream error');
+    })
+    .end();
 });
 
 server.listen(PORT, HOST, () => {
