@@ -18,8 +18,8 @@ const buildResponseHeaders = ({ headers: requestHeaders }) => {
 };
 
 const server = http.createServer((request, response) => {
-  const { uri, params } = parseUrl(request.url);
-  const imageUrl = proxyURL(uri);
+  const { path, params } = parseUrl(request.url);
+  const imageUrl = proxyURL(path);
   const resizeOpts = parseResizeOpts(params);
 
   response.on('error', (err) => {
