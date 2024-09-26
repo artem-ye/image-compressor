@@ -12,7 +12,7 @@ const proxyURL = (path) => `${PROXY_ENDPOINT}${path}`;
 
 const buildResponseHeaders = ({ headers: requestHeaders }) => {
   const headers = { 'transfer-encoding': 'chunked' };
-  const contentType = requestHeaders['content-type'];
+  const { 'content-type': contentType } = requestHeaders;
   contentType && (headers['content-type'] = contentType);
   return headers;
 };
