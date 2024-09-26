@@ -23,7 +23,7 @@ const server = http.createServer((request, response) => {
   const resizeOpts = parseResizeOpts(params);
 
   response.on('error', (err) => {
-    console.log('Response stream error', err);
+    console.log('Response stream error', err.message);
   });
 
   http
@@ -45,7 +45,7 @@ const server = http.createServer((request, response) => {
     .on('error', (err) => {
       console.log(err);
       response.headersSent || response.writeHead(HTTP_INTERNAL_SERVER_ERR);
-      response.end('Upstream error');
+      response.end('Upstream communication error');
     })
     .end();
 });
