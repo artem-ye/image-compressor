@@ -25,27 +25,36 @@ const server = http.createServer((request, response) => {
   const imageUrl = upstreamUrl(path);
   const resizeOpts = parseResizeOpts(params);
 
+  const abort = (code, message) => {
+    if (!response.headersSent) response.writeHead(code, message);
+    response.end();
+  };
+
+  const replyImage = (imageStream, statusCode, statusMessage, headers) => {
+    const resize = sharp()
+      .resize(resizeOpts)
+      .on('error', () => abort(HTTP_INTERNAL_ERROR, 'Resize error'))
+      .once('readable', () =>
+        response.writeHead(statusCode, statusMessage, headers)
+      );
+
+    pipeline(imageStream, resize, response, stub);
+  };
+
   const upstreamReq = http.get(imageUrl, (upstreamResponse) => {
     const { statusCode, statusMessage } = upstreamResponse;
-    const headers = buildResponseHeaders(upstreamResponse);
-    response.writeHead(statusCode, statusMessage, headers);
-
-    const abort = () => response.end();
 
     if (statusCode !== HTTP_OK) {
-      abort();
+      abort(statusCode, statusMessage);
     } else {
-      const resize = sharp().resize(resizeOpts).on('error', abort);
-      pipeline(upstreamResponse, resize, response, stub);
+      const headers = buildResponseHeaders(upstreamResponse);
+      replyImage(upstreamResponse, statusCode, statusMessage, headers);
     }
   });
 
-  upstreamReq.on('error', () =>
-    (response.headersSent
-      ? response
-      : response.writeHead(HTTP_INTERNAL_ERROR, 'Upstream communication error')
-    ).end()
-  );
+  upstreamReq.on('error', () => {
+    abort(HTTP_INTERNAL_ERROR, 'Upstream communication error');
+  });
 
   pipeline(request, upstreamReq, stub);
 });
