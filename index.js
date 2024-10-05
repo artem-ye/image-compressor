@@ -11,20 +11,20 @@ const { host: HOST, port: PORT } = config;
 const HTTP_INTERNAL_ERROR = 500;
 const HTTP_OK = 200;
 
-// prettier-ignore
-const errorLogger = ({ method, url }) => (msg) =>
+const errorLogger = (method, url) => (msg) =>
   logger.child({ method }).child({ url }).error(msg);
 
 const server = http.createServer((request, response) => {
-  const { path, params } = parseUrl(request.url);
+  const { method, url } = request;
+  const { path, params } = parseUrl(url);
   const imageUrl = upstreamUrl(path);
   const resizeOpts = parseResizeOpts(params);
 
-  const logError = errorLogger(request);
+  const logError = errorLogger(method, url);
   const pipelineStub = (err) => void (err && logError(err.message));
 
   const abort = (statusCode, statusMessage) => {
-    response.headersSent || response.writeHead(statusCode, statusMessage);
+    if (!response.headersSent) response.writeHead(statusCode, statusMessage);
     response.end();
   };
 
@@ -36,6 +36,7 @@ const server = http.createServer((request, response) => {
       abort(statusCode, statusMessage);
     } else {
       const resize = sharp().resize(resizeOpts);
+
       resize.once('readable', () => {
         const headers = buildResponseHeaders(upstreamResponse);
         response.writeHead(statusCode, statusMessage, headers);
@@ -45,6 +46,7 @@ const server = http.createServer((request, response) => {
         abort(HTTP_INTERNAL_ERROR, 'Resize error');
         resize.destroy();
       });
+
       pipeline(upstreamResponse, resize, response, pipelineStub);
     }
   });
