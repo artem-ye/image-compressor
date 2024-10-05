@@ -21,7 +21,7 @@ const server = http.createServer((request, response) => {
   const resizeOpts = parseResizeOpts(params);
 
   const logError = errorLogger(method, url);
-  const pipelineStub = (err) => void (err && logError(err.message));
+  const pipelineErrHandler = (err) => void (err && logError(err.message));
 
   const abort = (statusCode, statusMessage) => {
     if (!response.headersSent) response.writeHead(statusCode, statusMessage);
@@ -47,7 +47,7 @@ const server = http.createServer((request, response) => {
         resize.destroy();
       });
 
-      pipeline(upstreamResponse, resize, response, pipelineStub);
+      pipeline(upstreamResponse, resize, response, pipelineErrHandler);
     }
   });
 
@@ -56,7 +56,7 @@ const server = http.createServer((request, response) => {
     abort(HTTP_INTERNAL_ERROR, 'Upstream communication error');
   });
 
-  pipeline(request, upstreamReq, pipelineStub);
+  pipeline(request, upstreamReq, pipelineErrHandler);
 });
 
 server.listen(PORT, HOST, () => {
