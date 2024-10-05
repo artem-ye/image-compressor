@@ -41,10 +41,10 @@ const server = http.createServer((request, response) => {
         const headers = buildResponseHeaders(upstreamResponse);
         response.writeHead(statusCode, statusMessage, headers);
       });
-      resize.on('error', (err) => {
+      resize.on('error', function (err) {
         logError(`Resize error: ${err.message}`);
         abort(HTTP_INTERNAL_ERROR, 'Resize error');
-        resize.destroy();
+        this.destroy();
       });
 
       pipeline(upstreamResponse, resize, response, pipelineErrHandler);

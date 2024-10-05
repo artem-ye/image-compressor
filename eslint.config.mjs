@@ -131,7 +131,7 @@ export default [
       'space-before-function-paren': [
         'error',
         {
-          anonymous: 'never',
+          anonymous: 'ignore',
           named: 'never',
           asyncArrow: 'always',
         },
