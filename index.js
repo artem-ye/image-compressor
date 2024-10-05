@@ -19,7 +19,7 @@ const buildResponseHeaders = ({ headers: requestHeaders }) => {
   return headers;
 };
 
-const stub = () => {};
+const pipeStub = (err) => err && logger.error(err.message);
 
 const server = http.createServer((request, response) => {
   const { path, params } = parseUrl(request.url);
@@ -29,43 +29,39 @@ const server = http.createServer((request, response) => {
   const logError = (msg) =>
     logger.error(request.method + ' | ' + request.url + ' | ' + msg);
 
-  const abort = (code, message) => {
-    if (!response.headersSent) response.writeHead(code, message);
-    response.end();
-  };
-
-  const replyImage = (imageStream, statusCode, statusMessage, headers) => {
-    const resize = sharp()
-      .resize(resizeOpts)
-      .on('error', (err) => {
-        logError('Resize error: ' + err.message);
-        abort(HTTP_INTERNAL_ERROR, 'Resize error');
-      })
-      .once('readable', () =>
-        response.writeHead(statusCode, statusMessage, headers)
-      );
-
-    pipeline(imageStream, resize, response, stub);
-  };
-
   const upstreamReq = http.get(imageUrl, (upstreamResponse) => {
     const { statusCode, statusMessage } = upstreamResponse;
 
     if (statusCode !== HTTP_OK) {
-      logError('Upstream bad response: ' + statusCode + ' ' + statusMessage);
-      abort(statusCode, statusMessage);
+      logError(`Upstream bad response: ${statusCode} ${statusMessage}`);
+      response.writeHead(statusCode, statusMessage).end();
     } else {
-      const headers = buildResponseHeaders(upstreamResponse);
-      replyImage(upstreamResponse, statusCode, statusMessage, headers);
+      const sendHeaders = () => {
+        const headers = buildResponseHeaders(upstreamResponse);
+        response.writeHead(statusCode, statusMessage, headers);
+      };
+
+      const resize = sharp()
+        .resize(resizeOpts)
+        .on('error', (err) => {
+          logError('Resize error: ' + err.message);
+          response.writeHead(HTTP_INTERNAL_ERROR, 'Resize error').end();
+          resize.destroy();
+        })
+        .once('readable', sendHeaders);
+
+      pipeline(upstreamResponse, resize, response, pipeStub);
     }
   });
 
   upstreamReq.on('error', (err) => {
-    logError('Upstream communication error: ' + err.message);
-    abort(HTTP_INTERNAL_ERROR, 'Upstream communication error');
+    const msg = 'Upstream communication error';
+    logError(err.message);
+    if (!response.headersSent) response.writeHead(HTTP_INTERNAL_ERROR, msg);
+    response.end();
   });
 
-  pipeline(request, upstreamReq, stub);
+  pipeline(request, upstreamReq, pipeStub);
 });
 
 server.listen(PORT, HOST, () => {
