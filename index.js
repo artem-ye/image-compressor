@@ -39,22 +39,17 @@ const server = http.createServer((request, response) => {
   const { method, url } = request;
   const { path, params } = parseUrl(url);
   const resizeOpts = parseResizeOpts(params);
+  const imageUrl = upstreamUrl(path);
 
   const log = logger.child({ method }).child({ url });
-  const handlePipelineError = (e) => void (e && log.error(e.message));
+  const handlePipeError = (e) => void (e && log.error(e.message));
 
   const abort = (statusCode, statusMessage) => {
     if (!response.headersSent) response.writeHead(statusCode, statusMessage);
     response.end();
   };
 
-  const handleUpstreamResponse = (err, result) => {
-    if (err) {
-      log.error(err.message);
-      return void abort(err.statusCode, err.statusMessage);
-    }
-
-    const { response: image, statusCode, statusMessage, headers } = result;
+  const sendImage = ({ image, statusCode, statusMessage, headers }) => {
     const resize = sharp().resize(resizeOpts);
     resize.once('readable', () => {
       response.writeHead(statusCode, statusMessage, headers);
@@ -65,12 +60,20 @@ const server = http.createServer((request, response) => {
       this.destroy();
     });
 
-    pipeline(image, resize, response, handlePipelineError);
+    pipeline(image, resize, response, handlePipeError);
   };
 
-  const imageUrl = upstreamUrl(path);
-  const upstreamReq = photobankClient(imageUrl, handleUpstreamResponse);
-  pipeline(request, upstreamReq, handlePipelineError);
+  const upstreamReq = photobankClient(imageUrl, (err, result) => {
+    if (err) {
+      log.error(err.message);
+      abort(err.statusCode, err.statusMessage);
+    } else {
+      const { response: image, ...rest } = result;
+      sendImage({ image, ...rest });
+    }
+  });
+
+  pipeline(request, upstreamReq, handlePipeError);
 });
 
 server.listen(PORT, HOST, () => {
