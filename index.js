@@ -4,9 +4,9 @@ import sharp from 'sharp';
 
 import { config } from './lib/config.js';
 import { logger } from './lib/logger.js';
+import { photobankClient } from './lib/photobankClient.js';
 import { parseUrl } from './lib/url.js';
 import { upstreamUrl, parseResizeOpts } from './lib/helpers.js';
-import { photobankClient } from './lib/photobankClient.js';
 import { HTTP_INTERNAL_ERROR } from './lib/const.js';
 
 const { host: HOST, port: PORT } = config;
