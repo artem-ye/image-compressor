@@ -6,22 +6,13 @@ import { config } from './lib/config.js';
 import { logger } from './lib/logger.js';
 import { parseUrl, parseResizeOpts } from './lib/url.js';
 import { upstreamUrl, buildResponseHeaders } from './lib/helpers.js';
+import { HTTP_OK, HTTP_INTERNAL_ERROR } from './lib/const.js';
 
 const { host: HOST, port: PORT } = config;
-const HTTP_INTERNAL_ERROR = 500;
-const HTTP_OK = 200;
 
-const errorLogger = (method, url) => (msg) =>
-  logger.child({ method }).child({ url }).error(msg);
-
-const server = http.createServer((request, response) => {
-  const { method, url } = request;
-  const { path, params } = parseUrl(url);
+const buildUpstreamRequest = ({ response, path, params, log }) => {
   const imageUrl = upstreamUrl(path);
   const resizeOpts = parseResizeOpts(params);
-
-  const logError = errorLogger(method, url);
-  const pipelineErrHandler = (err) => void (err && logError(err.message));
 
   const abort = (statusCode, statusMessage) => {
     if (!response.headersSent) response.writeHead(statusCode, statusMessage);
@@ -32,7 +23,7 @@ const server = http.createServer((request, response) => {
     const { statusCode, statusMessage } = upstreamResponse;
 
     if (statusCode !== HTTP_OK) {
-      logError(`Upstream bad response: ${statusCode} ${statusMessage}`);
+      log.error(`Upstream bad response: ${statusCode} ${statusMessage}`);
       abort(statusCode, statusMessage);
     } else {
       const resize = sharp().resize(resizeOpts);
@@ -42,21 +33,33 @@ const server = http.createServer((request, response) => {
         response.writeHead(statusCode, statusMessage, headers);
       });
       resize.on('error', function (err) {
-        logError(`Resize error: ${err.message}`);
+        log.error(`Resize error: ${err.message}`);
         abort(HTTP_INTERNAL_ERROR, 'Resize error');
         this.destroy();
       });
 
-      pipeline(upstreamResponse, resize, response, pipelineErrHandler);
+      const stub = (e) => void (e && log.error(e.message));
+      pipeline(upstreamResponse, resize, response, stub);
     }
   });
 
   upstreamReq.on('error', (err) => {
-    logError(`Upstream communication error: ${err.message}`);
+    log.error(`Upstream communication error: ${err.message}`);
     abort(HTTP_INTERNAL_ERROR, 'Upstream communication error');
   });
 
-  pipeline(request, upstreamReq, pipelineErrHandler);
+  return upstreamReq;
+};
+
+const server = http.createServer((request, response) => {
+  const { method, url } = request;
+  const { path, params } = parseUrl(url);
+
+  const log = logger.child({ method }).child({ url });
+
+  const upstreamReq = buildUpstreamRequest({ response, path, params, log });
+  const stub = (err) => void (err && log.error(err.message));
+  pipeline(request, upstreamReq, stub);
 });
 
 server.listen(PORT, HOST, () => {
