@@ -4,36 +4,12 @@ import sharp from 'sharp';
 
 import { config } from './lib/config.js';
 import { logger } from './lib/logger.js';
-import { parseUrl, parseResizeOpts } from './lib/url.js';
-import { upstreamUrl, buildResponseHeaders } from './lib/helpers.js';
-import { HTTP_OK, HTTP_INTERNAL_ERROR } from './lib/const.js';
+import { parseUrl } from './lib/url.js';
+import { upstreamUrl, parseResizeOpts } from './lib/helpers.js';
+import { photobankClient } from './lib/photobankClient.js';
+import { HTTP_INTERNAL_ERROR } from './lib/const.js';
 
 const { host: HOST, port: PORT } = config;
-
-const photobankClient = (url, cb) => {
-  const req = http.get(url, (response) => {
-    const { statusCode, statusMessage } = response;
-
-    if (statusCode !== HTTP_OK) {
-      const message = `Upstream bad response: ${statusCode} ${statusMessage}`;
-      cb({ message, statusCode, statusMessage, error: null });
-    } else {
-      const headers = buildResponseHeaders(response);
-      cb(null, { response, statusCode, statusMessage, headers });
-    }
-  });
-
-  req.on('error', (error) => {
-    cb({
-      message: `Upstream communication error: ${error.message}`,
-      statusCode: HTTP_INTERNAL_ERROR,
-      statusMessage: 'Upstream communication error',
-      error,
-    });
-  });
-
-  return req;
-};
 
 const server = http.createServer((request, response) => {
   const { method, url } = request;
@@ -49,7 +25,7 @@ const server = http.createServer((request, response) => {
     response.end();
   };
 
-  const sendImage = ({ image, statusCode, statusMessage, headers }) => {
+  const sendImage = ({ imageStream, statusCode, statusMessage, headers }) => {
     const resize = sharp().resize(resizeOpts);
     resize.once('readable', () => {
       response.writeHead(statusCode, statusMessage, headers);
@@ -60,7 +36,7 @@ const server = http.createServer((request, response) => {
       this.destroy();
     });
 
-    pipeline(image, resize, response, handlePipeError);
+    pipeline(imageStream, resize, response, handlePipeError);
   };
 
   const upstreamReq = photobankClient(imageUrl, (err, result) => {
@@ -68,8 +44,8 @@ const server = http.createServer((request, response) => {
       log.error(err.message);
       abort(err.statusCode, err.statusMessage);
     } else {
-      const { response: image, ...rest } = result;
-      sendImage({ image, ...rest });
+      const { response: imageStream, ...rest } = result;
+      sendImage({ imageStream, ...rest });
     }
   });
 
