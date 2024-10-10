@@ -25,7 +25,7 @@ const server = http.createServer((request, response) => {
     response.end();
   };
 
-  const sendImage = ({ readStream, statusCode, statusMessage, headers }) => {
+  const sendImage = ({ imageStream, statusCode, statusMessage, headers }) => {
     const resize = sharp().resize(resizeOpts);
     resize.once('readable', () => {
       response.writeHead(statusCode, statusMessage, headers);
@@ -36,15 +36,17 @@ const server = http.createServer((request, response) => {
       this.destroy();
     });
 
-    pipeline(readStream, resize, response, handlePipeError);
+    pipeline(imageStream, resize, response, handlePipeError);
   };
 
-  const upstreamReq = photobankClient(imageUrl, (result) => {
-    const { response: readStream, ...rest } = result;
-    sendImage({ readStream, ...rest });
-  }).onError((err) => {
-    log.error(err.message);
-    abort(err.statusCode, err.statusMessage);
+  const upstreamReq = photobankClient(imageUrl, (err, result) => {
+    if (err) {
+      log.error(err.message);
+      abort(err.statusCode, err.statusMessage);
+    } else {
+      const { response: imageStream, ...rest } = result;
+      sendImage({ imageStream, ...rest });
+    }
   });
 
   pipeline(request, upstreamReq, handlePipeError);
