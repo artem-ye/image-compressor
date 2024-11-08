@@ -1,55 +1,23 @@
 import http from 'node:http';
-import { pipeline } from 'node:stream';
-import sharp from 'sharp';
 
-import { config } from './lib/config.js';
-import { logger } from './lib/logger.js';
-import { photobankClient } from './lib/photobankClient.js';
-import { parseUrl } from './lib/url.js';
-import { upstreamUrl, parseResizeOpts } from './lib/helpers.js';
-import { HTTP_INTERNAL_ERROR } from './lib/const.js';
+import { config } from './src/lib/config.js';
+import { logger } from './src/lib/logger.js';
+import { Router } from './src/lib/router/router.js';
+
+import { mainRoute } from './src/routes/main.rote.js';
+import { healthCheckRoute } from './src/routes/health.route.js';
+import { notFoundRoute } from './src/routes/404.route.js';
 
 const { host: HOST, port: PORT } = config;
 
+const router = new Router();
+router.setRoute('GET', '/health', healthCheckRoute);
+router.setRoute('GET', '/*', mainRoute);
+
 const server = http.createServer((request, response) => {
   const { method, url } = request;
-  const { path, params } = parseUrl(url);
-  const resizeOpts = parseResizeOpts(params);
-  const imageUrl = upstreamUrl(path);
-
-  const log = logger.child({ method }).child({ url });
-  const handlePipeError = (e) => void (e && log.error(e.message));
-
-  const abort = (statusCode, statusMessage) => {
-    if (!response.headersSent) response.writeHead(statusCode, statusMessage);
-    response.end();
-  };
-
-  const sendImage = ({ imageStream, statusCode, statusMessage, headers }) => {
-    const resize = sharp().resize(resizeOpts);
-    resize.once('readable', () => {
-      response.writeHead(statusCode, statusMessage, headers);
-    });
-    resize.on('error', function (err) {
-      log.error(`Resize error: ${err.message}`);
-      abort(HTTP_INTERNAL_ERROR, 'Resize error');
-      this.destroy();
-    });
-
-    pipeline(imageStream, resize, response, handlePipeError);
-  };
-
-  const upstreamReq = photobankClient(imageUrl, (err, result) => {
-    if (err) {
-      log.error(err.message);
-      abort(err.statusCode, err.statusMessage);
-    } else {
-      const { response: imageStream, ...rest } = result;
-      sendImage({ imageStream, ...rest });
-    }
-  });
-
-  pipeline(request, upstreamReq, handlePipeError);
+  const { handler = notFoundRoute } = router.route(method, url);
+  handler(request, response);
 });
 
 server.listen(PORT, HOST, () => {
